@@ -1,0 +1,64 @@
+# CONTINUOUS DEPLOYMENT
+#
+# Only runs after the CI workflow finishes successfully on `main`.
+# It rebuilds the React app and publishes it to GitHub Pages.
+#
+# Why a separate workflow instead of one big file?
+# - It keeps "did the code pass?" separate from "should we ship it?"
+# - CD only ever runs on main, and only once CI has said yes.
+#
+# One-time setup a student needs to do in the repo on GitHub:
+# Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: ["main"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & deploy frontend to GitHub Pages
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Upload build as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
